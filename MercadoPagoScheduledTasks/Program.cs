@@ -15,7 +15,8 @@ namespace MercadoPagoScheduledTasks
 
         private enum ScheduledTasks
         {
-            ConsultarEstadoTransacciones = 1
+            ConsultarEstadoTransaccionesMercadoPago = 1,
+            ConsultarEstadoTransaccionesMacro = 2
         }
         static void Main(string[] args)
         {
@@ -24,7 +25,7 @@ namespace MercadoPagoScheduledTasks
 
             try
             {
-                log.Info("MercadoPagoScheduledTasks START");
+                log.Info("ScheduledTasks START");
                 ScheduledTasks scheduledTask;
                 object[] arrArgsParams = null;
                 string appConn = ConfigurationManager.ConnectionStrings["appConn"].ToString();
@@ -57,7 +58,7 @@ namespace MercadoPagoScheduledTasks
 
                 #region Call Scheduled Task
 
-                //scheduledTask = (ScheduledTasks)1;
+                //scheduledTask = (ScheduledTasks)2; //Descomentar para hacer pruebas
 
                 try
                 {
@@ -65,7 +66,7 @@ namespace MercadoPagoScheduledTasks
                     switch (scheduledTask)
                     {
 
-                        case ScheduledTasks.ConsultarEstadoTransacciones:
+                        case ScheduledTasks.ConsultarEstadoTransaccionesMercadoPago:
                             ExternalServices.MercadoPago mpServices = new ExternalServices.MercadoPago();
                             PagosRepository pagos = new PagosRepository(appConn);
                             log.Info("Recuperando pagos con estados indeterminados...");
@@ -114,11 +115,28 @@ namespace MercadoPagoScheduledTasks
                                     log.Info($"Pago {idPago} rechazado en plataforma.");
                                 }
 
-                           }
+                            }
 
                             log.Info("MercadoPagoScheduledTasks END.");
                             break;
+                        case ScheduledTasks.ConsultarEstadoTransaccionesMacro:
+                            PagosRepository pagosMacro = new PagosRepository(appConn);
+                            log.Info("Recuperando pagos realizados por Macro con estados indeterminados...");
+                            List<BLLPago> pagosIndeterminadosMacro = pagosMacro.RecuperarPagosIndeterminadosMacro();                         
+                            log.Info($"Total Pagos Recuperados Macro:{(pagosIndeterminadosMacro?.Count() ?? 0)} ");
 
+                            log.Info("Verificando pagos en la API de Macro...");
+                            if (pagosIndeterminadosMacro.Count > 0)
+                            {
+                                ExternalServices.MacroClick consultaApiMacro = new ExternalServices.MacroClick();
+                                consultaApiMacro.ConsultarPagosMacro(pagosIndeterminadosMacro);
+                            }
+                            else
+                            {
+                                log.Info("No se encontraron pagos indeterminados para consultar en Macro.");
+                            }
+                            log.Info("MacroScheduledTasks END.");
+                            break;
                         default:
                             throw new Exception("Tarea inválida (" + scheduledTask.ToString() + ")");
                     }
@@ -137,7 +155,7 @@ namespace MercadoPagoScheduledTasks
             }
             finally
             {
-                log.Info("MercadoPagoScheduledTasks END");
+                log.Info("ScheduledTasks END");
             }
         }
     }

@@ -16,6 +16,12 @@ namespace DataAccess.Repositories
 
     }
 
+    public enum MediosPago
+    {
+        MercadoPago = 0,
+        Macro = 1
+    }
+
     public class PagosRepository : BaseRepository
     {
 
@@ -42,7 +48,8 @@ namespace DataAccess.Repositories
                         " FROM Pagos " +
                         " WHERE " +
                         " Pagos.Estado IN ('" + (int)EstadosPagos.Creado + "'," + "'" + (int)EstadosPagos.Demorado + "') AND " +
-                        " Pagos.FechaCreacion <= DATEADD(MINUTE, " + cantHoras + " , GETDATE())";
+                        " Pagos.FechaCreacion <= DATEADD(MINUTE, " + cantHoras + " , GETDATE()) AND " +
+                        " Pagos.IdMedioPago = " + (int)MediosPago.MercadoPago ;
 
                 log.Info($"Consulta SQL de recuperación de transacciones: {sQuery}");
 
@@ -119,6 +126,114 @@ namespace DataAccess.Repositories
                 {
                     sQuery += " , Collection = @collection ";
                     Command.Parameters.Add("@collection", collection);
+                }
+                sQuery += " WHERE Pagos.idPago = @idPago ";
+
+                Command.CommandText = sQuery;
+                Command.Parameters.Add("@estado", estadoPago);
+                Command.Parameters.Add("@idPago", idPago);
+                Connection.Open();
+                Command.ExecuteNonQuery();
+                Command.Dispose();
+                Connection.Close();
+            }
+            catch (Exception ex)
+            {
+                log.Error("Se produjo una excepcion:" + ex);
+                if (Connection != null) Connection.Close();
+                Command.Dispose();
+                sQuery = null;
+            }
+
+            finally
+            {
+                Command.Dispose();
+                sQuery = null;
+            }
+        }
+
+        public List<BLLPago> RecuperarPagosIndeterminadosMacro()
+        {
+            SqlDataAdapter daPagosIndeterminados = new SqlDataAdapter("", Connection);
+            DataSet dsPagosIndeterminados = new DataSet();
+
+            List<BLLPago> pagosIndeterminados = new List<BLLPago>();
+            string sQuery = null;
+            try
+            {
+                int cantHoras = (-1) * Convert.ToInt32(ConfigurationManager.AppSettings["cantHorasTarea"]);
+                log.Info($"Cant. Minutos Tarea:{cantHoras}");
+                sQuery = " SELECT " +
+                        " Pagos.IdPago, Pagos.Estado, Pagos.FechaCreacion, Pagos.TransaccionComercioIdMacro, Pagos.TransaccionPlataformaIDMacro " +
+                        " FROM Pagos " +
+                        " WHERE " +
+                        " Pagos.Estado IN ('" + (int)EstadosPagos.Creado + "'," + "'" + (int)EstadosPagos.Demorado + "') " +
+                        " OR (Pagos.Estado = '" + (int)EstadosPagos.Aprobado + "' AND (Pagos.TransaccionPlataformaIDMacro IS NULL OR Pagos.TransaccionPlataformaIDMacro = '')) " +
+                        " AND Pagos.FechaCreacion <= DATEADD(MINUTE, " + cantHoras + " , GETDATE()) " +
+                        " AND Pagos.IdMedioPago = " + (int)MediosPago.Macro;
+
+                log.Info($"Consulta SQL de recuperación de transacciones: {sQuery}");
+
+                Command.CommandText = sQuery;
+                Command.Parameters.Clear();
+                Connection.Open();
+                daPagosIndeterminados.SelectCommand = Command;
+                daPagosIndeterminados.Fill(dsPagosIndeterminados);
+                daPagosIndeterminados.Dispose();
+                Command.Dispose();
+                Connection.Close();
+
+                if (dsPagosIndeterminados.Tables != null &&
+                        dsPagosIndeterminados.Tables.Count == 1)
+                {
+                    foreach (DataRow dr in dsPagosIndeterminados.Tables[0].Rows)
+                    {
+                        pagosIndeterminados.Add(new BLLPago()
+                        {
+                            IdPago = Convert.ToInt32(dr["IdPago"]),
+                            Estado = Convert.ToInt32(dr["Estado"]),
+                            FechaCreacion = Convert.ToDateTime(dr["FechaCreacion"]),
+                            TransaccionComercioIdMacro = (dr["TransaccionComercioIdMacro"] != DBNull.Value) ? dr["TransaccionComercioIdMacro"].ToString() : string.Empty,
+                            TransaccionPlataformaIDMacro = (dr["TransaccionPlataformaIDMacro"] != DBNull.Value) ? dr["TransaccionPlataformaIDMacro"].ToString() : string.Empty
+                        });
+                    }
+                }
+
+                return pagosIndeterminados;
+            }
+            catch (Exception ex)
+            {
+                if (Connection != null) Connection.Close();
+                pagosIndeterminados = null;
+                Command.Dispose();
+                daPagosIndeterminados.Dispose();
+                sQuery = null;
+                return pagosIndeterminados;
+            }
+
+            finally
+            {
+                Command.Dispose();
+                sQuery = null;
+            }
+        }
+        public void ActualizarEstadoPagoMacro(int idPago, int estadoPago, string TransaccionPlataformaIDMacro)
+        {
+            if (!Enum.IsDefined(typeof(EstadosPagos), estadoPago))
+            {
+                log.Error($"El estado {estadoPago} no se corresponde con ningun estado posible");
+                throw new Exception("El estado no se corresponde con ningun estado posible");
+            }
+            log.Info($"ActualizarEstadoPago(). Parametros: idPago:{idPago}, estadoPago:{estadoPago}");
+            string sQuery = null;
+            try
+            {
+                Command.Parameters.Clear();
+                sQuery = " UPDATE Pagos SET Pagos.Estado = @estado, FechaActualizacion = GETDATE(), ActualizadoPor = 'Tarea Programada' ";
+                if (!string.IsNullOrEmpty(TransaccionPlataformaIDMacro))
+                {
+                    sQuery += " , TransaccionPlataformaIDMacro = @TransaccionPlataformaIDMacro ";
+                    Command.Parameters.Add("@TransaccionPlataformaIDMacro", TransaccionPlataformaIDMacro);
                 }
                 sQuery += " WHERE Pagos.idPago = @idPago ";
 

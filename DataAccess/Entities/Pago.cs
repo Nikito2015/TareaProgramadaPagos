@@ -21,6 +21,8 @@ namespace DataAccess.Entities
         public bool? Procesado { get; set; }
         public int? IdSocio { get; set; }
         public int? IdConexion { get; set; }
+        public string TransaccionComercioIdMacro { get; set; }
+        public string TransaccionPlataformaIDMacro { get; set; }
 
     }
 }
